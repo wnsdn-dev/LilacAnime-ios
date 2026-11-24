@@ -487,7 +487,7 @@ final class EpisodePlayerModel: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let file = folder.appendingPathComponent("screenshot.png")
-            try await engine.screenshot(to: file)
+            try await engine.screenshot(to: file, rendered: true)
             try await PlayerScreenshot.save(file, name: name)
             return "스크린샷을 사진 앱에 저장했어요"
         } catch { return "스크린샷을 저장하지 못했어요: " + error.localizedDescription }

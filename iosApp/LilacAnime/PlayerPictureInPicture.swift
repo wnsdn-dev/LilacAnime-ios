@@ -3,7 +3,7 @@ import AVKit
 import Accelerate
 import Libmpv
 
-/// Like the desktop canvas PiP: video and the currently selected subtitles form one frame.
+/// Like the desktop canvas PiP: video and the currently selected subtitles form one frame (also the 스크린샷's frame).
 /// Capture, conversion and scaling run on MPVEngine's serial worker, never the UI thread.
 enum PiPFrame {
     static func capture(_ handle: OpaquePointer, position: Double, mode: String = "subtitles", maximumWidth: Int = 960) throws -> CMSampleBuffer {
@@ -16,7 +16,7 @@ enum PiPFrame {
         defer { mpv_free_node_contents(&result) }
         guard status >= 0, result.format == MPV_FORMAT_NODE_MAP,
               let map = result.u.list, let keys = map.pointee.keys, let fields = map.pointee.values else {
-            throw SubtitleFiles.failure("PiP 영상 프레임을 읽지 못했습니다.")
+            throw SubtitleFiles.failure("영상 프레임을 읽지 못했습니다" + (status < 0 ? " (\(String(cString: mpv_error_string(status))))." : "."))
         }
         var width = 0, height = 0, stride = 0
         var bytes: mpv_byte_array?
@@ -30,7 +30,7 @@ enum PiPFrame {
             }
             if name == "data", field.format == MPV_FORMAT_BYTE_ARRAY { bytes = field.u.ba?.pointee }
         }
-        guard let bytes, let data = bytes.data else { throw SubtitleFiles.failure("PiP 영상 데이터가 없습니다.") }
+        guard let bytes, let data = bytes.data else { throw SubtitleFiles.failure("영상 데이터가 없습니다.") }
         // The UI observes time at 4 Hz; frame timestamps need the current core time for smooth PiP.
         var current = position
         if mpv_get_property(handle, "time-pos", MPV_FORMAT_DOUBLE, &current) < 0 || !current.isFinite { current = position }
@@ -39,29 +39,29 @@ enum PiPFrame {
     static func make(width: Int, height: Int, stride: Int, bytes: UnsafeMutableRawPointer, count: Int, position: Double, maximumWidth: Int = 960) throws -> CMSampleBuffer {
         guard width > 0, width <= 8192, height > 0, height <= 8192,
               stride >= width * 4, stride <= 65536, count >= stride * height else {
-            throw SubtitleFiles.failure("PiP 영상 크기가 올바르지 않습니다.")
+            throw SubtitleFiles.failure("영상 크기가 올바르지 않습니다.")
         }
         let outputWidth = min(width, maximumWidth), outputHeight = max(1, Int((Double(height) * Double(outputWidth) / Double(width)).rounded()))
         var pixel: CVPixelBuffer?
         let attributes: [CFString: Any] = [kCVPixelBufferIOSurfacePropertiesKey: [:]]
         guard CVPixelBufferCreate(kCFAllocatorDefault, outputWidth, outputHeight, kCVPixelFormatType_32BGRA, attributes as CFDictionary, &pixel) == kCVReturnSuccess,
-              let pixel else { throw SubtitleFiles.failure("PiP 영상 버퍼를 만들지 못했습니다.") }
+              let pixel else { throw SubtitleFiles.failure("영상 버퍼를 만들지 못했습니다.") }
         CVPixelBufferLockBaseAddress(pixel, [])
         defer { CVPixelBufferUnlockBaseAddress(pixel, []) }
-        guard let destination = CVPixelBufferGetBaseAddress(pixel) else { throw SubtitleFiles.failure("PiP 영상 버퍼를 열지 못했습니다.") }
+        guard let destination = CVPixelBufferGetBaseAddress(pixel) else { throw SubtitleFiles.failure("영상 버퍼를 열지 못했습니다.") }
         var input = vImage_Buffer(data: bytes, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: stride)
         var output = vImage_Buffer(data: destination, height: vImagePixelCount(outputHeight), width: vImagePixelCount(outputWidth), rowBytes: CVPixelBufferGetBytesPerRow(pixel))
         guard vImageScale_ARGB8888(&input, &output, nil, vImage_Flags(kvImageNoFlags)) == kvImageNoError else {
-            throw SubtitleFiles.failure("PiP 영상 크기를 조절하지 못했습니다.")
+            throw SubtitleFiles.failure("영상 크기를 조절하지 못했습니다.")
         }
         var format: CMVideoFormatDescription?
         guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixel, formatDescriptionOut: &format) == noErr, let format else {
-            throw SubtitleFiles.failure("PiP 영상 형식을 만들지 못했습니다.")
+            throw SubtitleFiles.failure("영상 형식을 만들지 못했습니다.")
         }
         var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: 24), presentationTimeStamp: CMTime(seconds: position.isFinite ? max(0, position) : 0, preferredTimescale: 600), decodeTimeStamp: .invalid)
         var sample: CMSampleBuffer?
         guard CMSampleBufferCreateReadyWithImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixel, formatDescription: format, sampleTiming: &timing, sampleBufferOut: &sample) == noErr,
-              let sample else { throw SubtitleFiles.failure("PiP 영상 샘플을 만들지 못했습니다.") }
+              let sample else { throw SubtitleFiles.failure("영상 샘플을 만들지 못했습니다.") }
         return sample
     }
 }
@@ -138,7 +138,12 @@ final class PlayerPictureInPicture: NSObject, ObservableObject, AVPictureInPictu
         frames?.cancel()
         frames = Task { [weak self] in
             var failures = 0
+            let clock = ContinuousClock(), interval = Duration.nanoseconds(41_666_667)
+            var next = clock.now
             while let self, !Task.isCancelled, token == self.revision, let engine = self.engine {
+                // One frame every 1/24 s, counting the capture's own time, so a slow capture does not lower the rate.
+                next += interval
+                if next < clock.now { next = clock.now }
                 do {
                     if self.layer.status == .failed { self.layer.flush() }
                     if engine.canCaptureVideo && self.layer.isReadyForMoreMediaData {
@@ -159,7 +164,7 @@ final class PlayerPictureInPicture: NSObject, ObservableObject, AVPictureInPictu
                         self.cleanup(); return
                     }
                 }
-                do { try await Task.sleep(nanoseconds: 41_666_667) } catch { return }
+                do { try await Task.sleep(until: next, clock: clock) } catch { return }
             }
         }
     }
