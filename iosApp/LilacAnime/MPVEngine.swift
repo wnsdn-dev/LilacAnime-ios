@@ -300,11 +300,20 @@ final class MPVEngine: ObservableObject {
     /// without subtitles or controls, as a PNG.
     func screenshot(to file: URL) async throws {
         guard let handle, fileLoaded else { throw SubtitleFiles.failure("영상이 나온 뒤에 찍을 수 있어요") }
+        let outputShown = !pictureInPictureOutput && !videoOutputHidden
         let result: Result<Void, Error> = await withCheckedContinuation { continuation in
             Self.blocking.async {
                 continuation.resume(returning: Result {
+                    // The decoded frame itself (without Anime4K); when it cannot be read back (a hardware-decoded
+                    // frame mpv fails to download), the video output draws it instead.
                     mpv_set_property_string(handle, "screenshot-sw", "yes")
-                    let frame = try PiPFrame.capture(handle, position: 0, mode: "video", maximumWidth: 8192)
+                    let frame: CMSampleBuffer
+                    do { frame = try PiPFrame.capture(handle, position: 0, mode: "video", maximumWidth: 8192) } catch {
+                        guard outputShown else { throw error }
+                        mpv_set_property_string(handle, "screenshot-sw", "no")
+                        defer { mpv_set_property_string(handle, "screenshot-sw", "yes") }
+                        frame = try PiPFrame.capture(handle, position: 0, mode: "video", maximumWidth: 8192)
+                    }
                     guard let pixel = CMSampleBufferGetImageBuffer(frame) else { throw SubtitleFiles.failure("영상 프레임이 없습니다.") }
                     try PlayerScreenshot.write(pixel, to: file)
                 })

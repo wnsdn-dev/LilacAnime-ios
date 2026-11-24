@@ -125,7 +125,10 @@ final class PictureInPictureTests: XCTestCase {
     func testFrameRejectsTruncatedPixelsAndScalesLargeFrames() throws {
         var bytes = [UInt8](repeating: 255, count: 1920 * 4)
         let sample = try bytes.withUnsafeMutableBytes { raw -> CMSampleBuffer in
-            XCTAssertThrowsError(try PiPFrame.make(width: 1920, height: 2, stride: 1920 * 4, bytes: raw.baseAddress!, count: raw.count, position: 0))
+            // 스크린샷 uses this frame too: its failure must not speak of PiP.
+            XCTAssertThrowsError(try PiPFrame.make(width: 1920, height: 2, stride: 1920 * 4, bytes: raw.baseAddress!, count: raw.count, position: 0)) {
+                XCTAssertFalse($0.localizedDescription.contains("PiP"), $0.localizedDescription)
+            }
             return try PiPFrame.make(width: 1920, height: 1, stride: 1920 * 4, bytes: raw.baseAddress!, count: raw.count, position: 0)
         }
         XCTAssertEqual(CVPixelBufferGetWidth(try XCTUnwrap(CMSampleBufferGetImageBuffer(sample))), 960)
