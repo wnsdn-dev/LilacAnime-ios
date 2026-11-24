@@ -223,7 +223,7 @@ object RecentUpdates {
                 for ((saved, fact) in found) {
                     if (fact != null) learn(saved, fact.availableEpisodes, fact.totalEpisodes, fact.status, fact.updatedAt, checked = true)
                     // A page that could not be read is tried again in half an hour.
-                    else facts = facts + (saved.id to (facts[saved.id] ?: Fact()).copy(checkedAt = System.currentTimeMillis() - 3 * 3_600_000L + 1_800_000L))
+                    else facts = facts + (saved.id to (facts[saved.id] ?: Fact()).copy(checkedAt = LibraryFacts.failedCheckedAtMillis(shown(saved), System.currentTimeMillis())))
                 }
             }
         } finally { refreshing = false }

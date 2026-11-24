@@ -108,7 +108,9 @@ final class DesktopRecentUpdates: ObservableObject {
                     learn(saved, available: Int(fact.availableEpisodes), total: Int(fact.totalEpisodes), status: fact.status, updatedAt: fact.updatedAt, checked: true)
                 } else {
                     // A page that could not be read is tried again in half an hour.
-                    var kept = facts[saved.id] ?? Fact(); kept.checkedAt = Date().addingTimeInterval(-3 * 3600 + 1800); facts[saved.id] = kept
+                    var kept = facts[saved.id] ?? Fact()
+                    let retry = LibraryFacts.shared.failedCheckedAtMillis(anime: shown(saved), nowMillis: Int64(Date().timeIntervalSince1970 * 1000))
+                    kept.checkedAt = Date(timeIntervalSince1970: Double(retry) / 1000); facts[saved.id] = kept
                 }
             }
         }

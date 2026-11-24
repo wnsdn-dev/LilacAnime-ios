@@ -111,4 +111,22 @@ final class EpisodePickerTests: XCTestCase {
                          directURL: nil, position: 30, duration: 1200, displayNumber: "3")
         XCTAssertEqual(library.history.map(\.episodeID), ["listed-3"])
     }
+
+    // desktop 8065f4a: an episode the phone played to 90% stays ✓ 시청함 when it is watched again here.
+    @MainActor func testWatchingAPhonesWatchedEpisodeAgainKeepsItWatched() throws {
+        let saved = anime(3, id: "test-slug", source: "reanime")
+        var phone = WatchEntry(id: saved.id + "#phone-3", anime: saved, episodeID: "phone-3", episodeTitle: "3화", number: 3,
+                               watchURL: "https://reanime.to/watch/test-slug?ep=3", directURL: nil, position: 0, duration: 0, updatedAt: Date(timeIntervalSince1970: 3))
+        phone.androidEpisodeKey = "reanime:test-slug:ep-3"; phone.displayNumber = "3"; phone.watched = true
+
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let library = LibraryStore(file: file)
+        library.replaceFromSync(favorites: [], history: [phone])
+        library.progress(anime: saved, episodeID: "listed-3", title: "3화", number: 3, watchURL: "https://reanime.to/watch/test-slug?ep=3",
+                         directURL: nil, position: 30, duration: 1200, displayNumber: "3")
+        XCTAssertEqual(library.history.map(\.episodeID), ["listed-3"])
+        XCTAssertEqual(library.history[0].watched, true)
+        XCTAssertEqual(library.history[0].watchedPercent, 100)
+    }
 }
