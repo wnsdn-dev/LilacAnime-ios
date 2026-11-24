@@ -129,4 +129,25 @@ final class EpisodePickerTests: XCTestCase {
         XCTAssertEqual(library.history[0].watched, true)
         XCTAssertEqual(library.history[0].watchedPercent, 100)
     }
+
+    // Animenosub's dub and original share 6화: the phone's watched dub is neither replaced by nor lends ✓ to the original.
+    @MainActor func testAPhonesWatchedDubDoesNotMarkTheOriginalWatched() throws {
+        let saved = anime(6)
+        var dub = WatchEntry(id: saved.id + "#phone-dub-6", anime: saved, episodeID: "phone-dub-6", episodeTitle: "6화", number: 6,
+                             watchURL: "", directURL: nil, position: 0, duration: 0, updatedAt: Date(timeIntervalSince1970: 3))
+        dub.androidEpisodeKey = "animenosub:bleach_dub_ep_6"; dub.displayNumber = "6"; dub.watched = true
+
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let library = LibraryStore(file: file)
+        library.replaceFromSync(favorites: [], history: [dub])
+        library.progress(anime: saved, episodeID: "animenosub:bleach_ep_6", title: "6화", number: 6, watchURL: "https://animenosub.to/bleach-tybw-episode-6/",
+                         directURL: nil, position: 30, duration: 1200, displayNumber: "6")
+        XCTAssertEqual(library.history.map(\.episodeID), ["animenosub:bleach_ep_6", "phone-dub-6"])
+        XCTAssertNil(library.history[0].watched)
+        library.progress(anime: saved, episodeID: "animenosub:bleach_dub_ep_6", title: "6화", number: 6, watchURL: "https://animenosub.to/bleach-tybw-dub-episode-6/",
+                         directURL: nil, position: 30, duration: 1200, displayNumber: "6")
+        XCTAssertEqual(library.history.map(\.episodeID), ["animenosub:bleach_dub_ep_6", "animenosub:bleach_ep_6"])
+        XCTAssertEqual(library.history[0].watched, true)
+    }
 }
