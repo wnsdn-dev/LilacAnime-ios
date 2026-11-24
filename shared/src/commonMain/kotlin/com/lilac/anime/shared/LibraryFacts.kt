@@ -44,6 +44,9 @@ object LibraryFacts {
         val finished = (total > 0 && uploaded >= total) || finishedStatus.containsMatchIn(anime.status)
         return if (finished) 7 * 24 * 60 * 60 * 1000L else 3 * 60 * 60 * 1000L
     }
+    /** The time to keep as a work's last look when its page could not be read at [nowMillis]: it is due again in half an
+     *  hour, whether it is looked at every few hours or weekly. */
+    fun failedCheckedAtMillis(anime: Anime, nowMillis: Long): Long = nowMillis - dueAfterMillis(anime) + 30 * 60 * 1000L
     /** The day an update's time names ("2026-11-10T15:30:00Z" → "2026-11-10"), "" for none. */
     fun day(value: String): String = value.take(10).takeIf { isoDay.matches(it) }.orEmpty()
 }

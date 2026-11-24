@@ -27,4 +27,11 @@ class LibraryFactsTest {
         assertEquals(7 * 24 * 60 * 60 * 1000L, LibraryFacts.dueAfterMillis(Anime(status = "완결")))
         assertEquals("2026-11-10", LibraryFacts.day("2026-11-10T15:30:00Z")); assertEquals("", LibraryFacts.day("어제"))
     }
+
+    @Test fun aPageThatCouldNotBeReadIsDueAgainInHalfAnHourWhateverTheWork() {
+        for (anime in listOf(Anime(availableEpisodes = 7, totalEpisodes = 12), Anime(availableEpisodes = 12, totalEpisodes = 12), Anime(status = "완결"))) {
+            val checked = LibraryFacts.failedCheckedAtMillis(anime, now)
+            assertEquals(30 * 60 * 1000L, checked + LibraryFacts.dueAfterMillis(anime) - now)
+        }
+    }
 }

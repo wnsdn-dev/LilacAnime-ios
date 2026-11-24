@@ -219,8 +219,13 @@ final class LibraryStore: ObservableObject {
                   directURL: String?, position: Double, duration: Double, displayNumber: String? = nil) {
         guard position.isFinite, duration.isFinite, position >= 0 else { return }
         let id = anime.id + "#" + episodeID
-        let watched = history.contains { $0.id == id && $0.watched == true } || (duration > 0 && position / duration >= 0.9)
-        history.removeAll { $0.id == id || ($0.androidEpisodeKey != nil && $0.anime.id == anime.id && $0.episodeLabel == (displayNumber ?? String(number))) }
+        // The entries this one replaces: its own, and a phone's of the same episode and audio (whose ✓ 시청함 it keeps);
+        // Animenosub's dub and original share a label, their ids tell them apart ("_dub_ep_").
+        let dub = episodeID.contains("_dub_ep_")
+        let replaced: (WatchEntry) -> Bool = { $0.id == id || ($0.androidEpisodeKey.map { $0.contains("_dub_ep_") == dub } == true
+            && $0.anime.id == anime.id && $0.episodeLabel == (displayNumber ?? String(number))) }
+        let watched = history.contains { replaced($0) && $0.watched == true } || (duration > 0 && position / duration >= 0.9)
+        history.removeAll(where: replaced)
         // Only the newest entry of a series keeps its episode list: the same long list in every watched episode's entry
         // made library.json grow without end. An older entry asks for the list again when it is played.
         for index in history.indices where history[index].anime.id == anime.id && !history[index].anime.snapshot.contains("\"episodes\":[]") {
